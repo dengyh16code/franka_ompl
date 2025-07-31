@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="panda">
+  <xacro:arg name="arm_id_1" default="fr3_right" />
+  <xacro:arg name="arm_id_2" default="fr3_left" />
+
+    <xacro:include filename="/home/adacomp/franka_softgym/franka_description/robots/common/franka_arm.xacro"/>
+  <xacro:include filename="/home/adacomp/franka_softgym/franka_description/robots/common/franka_hand.xacro"/>
+  
+  <!-- Positional offset between $(arm_id)_hand -> $(arm_id)_hand_tcp [m]. Only used when hand:=true -->
+  <!-- default:0.1034 ft_sensor:0.1505 ft_senor+soft gripper:0.2525 softgripper only 0.2054-->
+  <xacro:arg name="tcp_xyz_left" default="0 0 0.2054" />
+  <xacro:arg name="tcp_xyz_right" default="0 0 0.2525" />
+  
+  <xacro:arg name="tcp_rpy" default="0 0 0" />
+  <xacro:arg name="hand" default="true" />
+  <xacro:arg name="gazebo" default="false" />
+
+  <!-- box shaped table as base for the 2 Pandas -->
+  <link name="base">
+    <visual>
+      <origin xyz="0 0 0.5" rpy="0 0 0"/>
+      <geometry>
+        <box size="1 2 1" />
+      </geometry>
+      <material name="White">
+        <color rgba="1.0 1.0 1.0 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.5" rpy="0 0 0"/>
+      <geometry>
+        <box size="1 2 1" />
+      </geometry>
+    </collision>
+  </link>
+
+
+  <!-- right arm with gripper -->
+  <xacro:franka_arm arm_id="$(arg arm_id_1)" connected_to="base"  xyz="0 -0.405 1" safety_distance="0.03" joint_limits="${xacro.load_yaml('/home/adacomp/franka_softgym/franka_description/robots/fr3/joint_limits.yaml')}"/>
+  <xacro:franka_hand arm_id="$(arg arm_id_1)" rpy="0 0 ${-pi/4}" tcp_xyz="$(arg tcp_xyz_right)" tcp_rpy="$(arg tcp_rpy)" connected_to="$(arg arm_id_1)_link8" safety_distance="0.03"/>
+
+  <!-- left arm with gripper -->
+  <xacro:franka_arm arm_id="$(arg arm_id_2)" connected_to="base"  xyz="0 0.405 1" safety_distance="0.03" joint_limits="${xacro.load_yaml('/home/adacomp/franka_softgym/franka_description/robots/fr3/joint_limits.yaml')}"/>
+  <xacro:franka_hand arm_id="$(arg arm_id_2)" rpy="0 0 ${-pi/4}" tcp_xyz="$(arg tcp_xyz_left)" tcp_rpy="$(arg tcp_rpy)" connected_to="$(arg arm_id_2)_link8" safety_distance="0.03"/>
+</robot>
