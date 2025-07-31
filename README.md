@@ -20,7 +20,7 @@ conda activate ompl
 ```
 pip install ompl
 ```
-## Install and [Pinocchio](https://github.com/stack-of-tasks/pinocchio) for kinematics and collision checking
+## Install [Pinocchio](https://github.com/stack-of-tasks/pinocchio) for kinematics and collision checking
 ```
 conda install pinocchio -c conda-forge
 ```
