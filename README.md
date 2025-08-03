@@ -36,7 +36,7 @@ This demo performs arm motion planning for a dual-arm Franka Fr3 robot.
 You can view the visualization by opening the output URL in your browser.
 
 ```
-python pin_ompl.py
+python pin_ompl.py --viz
 ```
 
 
