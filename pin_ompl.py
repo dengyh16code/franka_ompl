@@ -7,7 +7,9 @@ from pinocchio.visualize import MeshcatVisualizer
 import numpy as np
 import copy
 import time
-import os
+import meshcat.geometry as g
+from numpy.linalg import norm, solve
+import argparse
 
 INTERPOLATE_NUM = 500
 DEFAULT_PLANNING_TIME = 5.0
@@ -56,6 +58,47 @@ class PinRobot:
                 print(f"Joint: {joint_name} - Lower: {lower}, Upper: {upper}")
         return self.joint_bounds
     
+    def add_obstacle_box(self, name, size, position, color=[1.0, 1.0, 1.0, 0.8]):
+        """
+        Add a static box obstacle to the Pinocchio geometry model.
+
+        Args:
+            name (str): Unique name for the obstacle.
+            size (list or tuple): [x, y, z] dimensions of the box.
+            position (list or np.array): [x, y, z] world position of the box.
+        """
+        from hppfcl import Box
+
+        # Create box and SE3 placement
+        box = Box(*size)
+        placement = pin.SE3(np.eye(3), np.array(position))
+
+        # Create geometry object bound to world frame (link_id = 0)
+        geom_obj = pin.GeometryObject(name, 0, box, placement)
+        self.geom_model.addGeometryObject(geom_obj)
+
+        # Add collision pairs: all robot links vs this obstacle
+        obstacle_id = len(self.geom_model.geometryObjects) - 1
+        for i in range(obstacle_id):  # avoid pairing with itself
+            self.geom_model.addCollisionPair(pin.CollisionPair(i, obstacle_id))
+
+        # Rebuild geometry data to include the new object
+        self.geom_data = pin.GeometryData(self.geom_model)
+        print("num collision pairs ",len(self.geom_model.collisionPairs))
+
+        if self.viz:
+            # Add to visual model as well
+            box_mesh = g.Box(size)
+            r, g_val, b = [int(255 * c) for c in color[:3]]
+            material = g.MeshLambertMaterial(
+            color=(r << 16) + (g_val << 8) + b,
+            opacity=color[3],
+            transparent=(color[3] < 1.0)
+)
+            self.visualizer.viewer[f"obstacles/{name}"].set_object(box_mesh, material)
+            self.visualizer.viewer[f"obstacles/{name}"].set_transform(placement.homogeneous)
+
+
     def check_collision(self, state):
         '''
         Check if the configuration q is in collision
@@ -69,7 +112,56 @@ class PinRobot:
                 # print("Collision detected in pair:", cp.first,",",cp.second)
                 return True
         return False
+    
+    def get_end_effector_pose(self, end_effector):
+        '''
+        given the end effector name, return the pose of the end effector
+        end_effector: str, the name of the end effector frame
+        return: end_effector_id, end_effector_pose
+        '''
+        end_effector_id = self.model.getFrameId(end_effector)
 
+        # print(end_effector, "pose:", self.data.oMf[end_effector_id])
+        return end_effector_id, self.data.oMf[end_effector_id]
+    
+    def diff_ik(self, target_pos, target_ori, end_effector):
+        oMdes = pin.SE3(np.array(target_ori), np.array(target_pos))
+        q      = self.get_cur_state()
+        eps    = 1e-4
+        IT_MAX = 1000
+        DT     = 1e-1
+        damp   = 1e-12
+        
+        i=0
+        while True:
+            pin.forwardKinematics(self.model, self.data, q)
+            pin.updateFramePlacements(self.model, self.data)
+            # self.set_state(q)
+            end_effector_id, end_effector_pose = self.get_end_effector_pose(end_effector)
+            dMi = oMdes.actInv(end_effector_pose)
+            err = pin.log(dMi).vector
+            if norm(err) < eps:
+                success = True
+                break
+            if i >= IT_MAX:
+                success = False
+                break
+            J = pin.computeFrameJacobian(self.model,self.data,q,end_effector_id)
+            v = - J.T.dot(solve(J.dot(J.T) + damp * np.eye(6), err))
+            q = pin.integrate(self.model,q,v*DT)
+            # if not i % 10:
+            #     print('%d: error = %s' % (i, err.T))
+            i += 1
+        
+        if success:
+            print("Convergence achieved!")
+        else:
+            print("\nWarning:IK failure,error = %s" % err.T)
+        
+        return success, q.flatten().tolist()
+        
+        # print('\nresult: %s' % q.flatten().tolist())
+        # print('\nfinal error: %s' % err.T)
 
     def get_cur_state(self):
         return copy.deepcopy(self.state)
@@ -202,25 +294,45 @@ class PinOMPL:
     
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="PinOMPL Example")
+    parser.add_argument('--urdf_path', type=str, default="models/fr3_dual.urdf", help='Path to the URDF file')
+    parser.add_argument('--srdf_path', type=str, default="models/fr3_dual.srdf", help='Path to the SRDF file')
+    parser.add_argument('--model_dir', type=str, default="models", help='Directory containing the URDF and SRDF files')
+    parser.add_argument('--viz', action='store_true', help='Enable visualization')
+    parser.add_argument('--plan_mode', type=str, default="joint", help='(e.g., joint, eef)')
+    args = parser.parse_args()
 
-
-    root_dir = os.path.dirname(os.path.abspath(__file__))
-    urdf_path = os.path.join(root_dir, "models", "fr3_dual.urdf")
-    srdf_path = os.path.join(root_dir, "models", "fr3_dual.srdf")
-    model_dir = os.path.join(root_dir, "models")
     start_state =  [0, -0.778, 0.0158,-2.369, 0, 1.54, 0.77, 0, 0, 0, -0.778, 0.0158,-2.369, 0, 1.54, 0.77, 0, 0]
-    goal_state = copy.deepcopy(start_state)
-    goal_state[1] += 0.5
-    goal_state[10] += 0.5
-
-    robot = PinRobot(urdf_path, srdf_path, model_dir, viz=True)
+    robot = PinRobot(args.urdf_path, args.srdf_path, args.model_dir, args.viz)
     pb_ompl_interface = PinOMPL(robot)
     pb_ompl_interface.set_planner("bitstar")
-
+    table_position = [0.6, 0, 0.025]
+    table_size = [0.55, 1.4, 0.05]
+    pb_ompl_interface.robot.add_obstacle_box("table", table_size, table_position)
     pb_ompl_interface.robot.set_state(start_state)
-    res, path  = pb_ompl_interface.plan(goal_state)
-    if res:
-        pb_ompl_interface.robot.execute(path)
+
+    if args.plan_mode == "joint":
+        goal_state = copy.deepcopy(start_state)
+        goal_state[1] += 0.5
+        goal_state[10] += 0.5
+        res, path  = pb_ompl_interface.plan(goal_state)
+        if res:
+            pb_ompl_interface.robot.execute(path)
+
+    elif args.plan_mode == "eef":
+        end_effector_id, end_effector_pose = pb_ompl_interface.robot.get_end_effector_pose("fr3_left_hand_tcp")
+        eff_position = copy.deepcopy(end_effector_pose.translation)
+        eff_orientation = copy.deepcopy(end_effector_pose.rotation)
+        eff_position[2] += 0.2  
+        ik_res, goal_state = pb_ompl_interface.robot.diff_ik(eff_position, eff_orientation, "fr3_left_hand_tcp")
+        if ik_res:
+            collision = pb_ompl_interface.robot.check_collision(goal_state)
+            if not collision:
+                res, path  = pb_ompl_interface.plan(goal_state)
+                if res:
+                    pb_ompl_interface.robot.execute(path)
+
+
 
         
         

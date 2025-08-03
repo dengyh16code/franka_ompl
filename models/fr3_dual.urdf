@@ -7,25 +7,25 @@
   <!-- box shaped table as base for the 2 Pandas -->
   <link name="base">
     <visual>
-      <origin rpy="0 0 0" xyz="0 0 0.5"/>
+      <origin rpy="0 0 0" xyz="0 0 0.025"/>
       <geometry>
-        <box size="1 2 1"/>
+        <box size="0.6 1.4 0.05"/>
       </geometry>
       <material name="White">
         <color rgba="1.0 1.0 1.0 1.0"/>
       </material>
     </visual>
     <collision>
-      <origin rpy="0 0 0" xyz="0 0 0.5"/>
+      <origin rpy="0 0 0" xyz="0 0 0.025"/>
       <geometry>
-        <box size="1 2 1"/>
+        <box size="0.6 1.4 0.05"/>
       </geometry>
     </collision>
   </link>
   <joint name="fr3_right_joint_base" type="fixed">
     <parent link="base"/>
     <child link="fr3_right_link0"/>
-    <origin rpy="0 0 0" xyz="0 -0.405 1"/>
+    <origin rpy="0 0 0" xyz="0 -0.405 0.05"/>
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_right_link0">
@@ -613,7 +613,7 @@
   <joint name="fr3_left_joint_base" type="fixed">
     <parent link="base"/>
     <child link="fr3_left_link0"/>
-    <origin rpy="0 0 0" xyz="0 0.405 1"/>
+    <origin rpy="0 0 0" xyz="0 0.405 0.05"/>
   </joint>
   <!-- sub-link defining detailed meshes for collision with environment -->
   <link name="fr3_left_link0">
